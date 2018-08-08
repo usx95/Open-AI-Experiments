@@ -6,7 +6,6 @@ import gym
 from gym import spaces, logger
 import numpy as np
 from gym.envs.classic_control import rendering
-import random
 
 
 class WindyGridWorldEnv(gym.Env):
@@ -15,11 +14,14 @@ class WindyGridWorldEnv(gym.Env):
         'video.frames_per_second': 1
     }
 
-    def __init__(self, rows=7, col=10):
+    def __init__(self, rows=7, col=10, standard=1, max_wind=2):
+        np.random.seed(0)
         self.rows = rows
         self.col = col
-        self.wind = np.random.randint(3, size=col) - 1
-        self.wind = [0, 0, 0, 1, 1, 1, 2, 2, 1, 0]
+        if standard and rows == 7:
+            self.wind = [0, 0, 0, 1, 1, 1, 2, 2, 1, 0]
+        else:
+            self.wind = np.random.randint(max_wind + 1, size=col)
         self.action_space = spaces.Discrete(4)
         self.moves = [(0, 1), (0, -1), (1, 0), (-1, 0)]
         self.start_state = (rows // 2, 0)
@@ -34,7 +36,24 @@ class WindyGridWorldEnv(gym.Env):
         self.path = []
         self.viewer = None
         self.reset()
-        random.seed(0)
+        self.correct_answer = self.bfs_optimal_solution()
+
+    def bfs_optimal_solution(self):
+        sp = {}
+        queue = [(self.start_state, 0)]
+        while len(queue) > 0:
+            state, dist = queue.pop(0)
+            if state in sp:
+                continue
+            sp[state] = dist
+            for a in self.moves:
+                x, y = state
+                x += self.wind[y]
+                x, y = x + a[0], y + a[1]
+                x, y = self.bound(x, y)
+                queue.append(((x, y), dist + 1))
+        assert self.end_state in sp
+        return sp[self.end_state]
 
     def bound(self, x, y):
         if x < 0:
@@ -80,7 +99,6 @@ class WindyGridWorldEnv(gym.Env):
         self.state = self.start_state
         self.steps_beyond_done = None
         self.path = [self.state]
-        self.path_colour = [random.random(), random.random(), random.random()]
         return self.state
 
     def render(self, mode='human'):
@@ -120,7 +138,7 @@ class WindyGridWorldEnv(gym.Env):
         x = self.state[0] * scale_h + scale_h / 2
         y = self.state[1] * scale_w + scale_w / 2
         path = rendering.make_polyline([((y + 0.5) * scale_w, (x + 0.5) * scale_h) for (x, y) in self.path])
-        path.set_color(*self.path_colour)
+        path.set_color(1, 0, 0)
         path.set_linewidth(5.5)
         self.viewer.add_geom(path)
         self.translation.set_translation(y, x)

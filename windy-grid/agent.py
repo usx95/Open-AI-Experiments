@@ -1,9 +1,9 @@
 import gym
 import random
+import time
+from collections import defaultdict
 
 random.seed(1)
-from collections import defaultdict
-import time
 
 INF = 100000000000000
 
@@ -23,6 +23,8 @@ def greedy(q_value, state, actions):
     for a in actions:
         if get_q_value(state, a, q_value) > get_q_value(state, a_, q_value):
             a_ = a
+    if get_q_value(state, a_, q_value) == -INF:
+        a_ = random.choice(actions)
     return a_
 
 
@@ -57,40 +59,45 @@ def show_solution(env, q_value, actions, epsilon=0.0, wait=False, delay=0.1, deb
         limit -= 1
 
 
-def monte_carlo_epsilon_greedy(env, episodes=1000000, epsilon=0.8):
+def monte_carlo_epsilon_greedy(env, episodes=1000000, epsilon=0.80):
     print(env.env.wind)
     actions = [0, 1, 2, 3]
     q_value = defaultdict(float)
     n = defaultdict(int)
-    next_show = 1
     for _ in range(episodes):
-        # if _ > next_show:
-        #     show_solution(env, q_value, actions, epsilon=epsilon, delay=0.15)
-        #     next_show = 1.6 * next_show
         start = state = env.reset()
         done = False
         history = []
         if _ > 0.05 * episodes:
-            epsilon = 1 / (1+_)
+            epsilon = 1 / (1 + _)
         while not done:
             action = epsilon_greedy(q_value, state, actions, epsilon)
             n_state, reward, done, info = env.step(action)
             history.append(((state, action), reward))
             state = n_state
         assert state == env.env.end_state
-        if _ % 200 == 0:
-            print("Progress = {0:.3f}%, eps = {1:.3f}, value[start] = {2:.4f}, last episode length = {3}".
+        if _ % 500 == 0:
+            print("Progress = {0:.3f}%, eps = {1:.3f}, value[start] = {2:.4f}, last episode length = {3},"
+                  " correct answer={4}".
                   format(_ * 100 / episodes,
                          epsilon,
                          get_q_value(start, greedy(q_value, start, actions), q_value),
-                         len(history)))
+                         len(history), env.env.correct_answer))
 
         G = 0
+        last_visit_only = {}
         for ((state, action), reward) in reversed(history):
-            G += reward
-            n[(state, action)] += 1
-            q_value[(state, action)] += (G - q_value[(state, action)]) / n[(state, action)]
-    # Greedy Solution
+            if (state, action) in last_visit_only:
+                # Forget the cycle. Only true for negative reward cycle (as in this case)
+                G = last_visit_only[(state, action)]
+            else:
+                # First visit to (s,a)
+                G += reward
+                n[(state, action)] += 1
+                q_value[(state, action)] += (G - q_value[(state, action)]) / n[(state, action)]
+                last_visit_only[(state, action)] = G
+
+    # Show Greedy Solution
     show_solution(env, q_value, actions, epsilon=0, delay=1.5)
 
 
@@ -104,5 +111,5 @@ if __name__ == '__main__':
 
     e = gym.make('Windy-Grid-v0')
     e.reset()
-    e._max_episode_steps = 1000000000000000
+    e._max_episode_steps = 2000000
     monte_carlo_epsilon_greedy(e)
